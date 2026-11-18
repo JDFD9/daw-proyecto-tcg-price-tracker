@@ -1,25 +1,31 @@
-# Diagrama Entidad-Relación (DER) --- TCG Price Tracker
 
-Este documento define el modelo de datos inicial de **TCG Price
-Tracker**, una aplicación web para consultar precios de cartas
-coleccionables, guardar cartas en seguimiento y configurar alertas.
+# Diagrama Entidad-Relación (DER) — TCG Price Tracker
 
-## 1. Diagrama entidad-relación
+## 1. Introducción
 
-El diagrama está escrito en Mermaid. GitHub puede representarlo
-directamente dentro de este archivo Markdown.
+Este documento define el modelo de datos relacional de **TCG Price Tracker**, una aplicación web que permite consultar cartas coleccionables, registrar su histórico de precios, gestionar listas personales de seguimiento y configurar alertas de precio.
 
-``` mermaid
+La base de datos utiliza PostgreSQL y su estructura se gestiona mediante Prisma ORM.
+
+El sistema utiliza **Cardmarket como única fuente de referencia de precios**. En el MVP, los precios se introducen manualmente por un administrador, incluyendo el importe, la moneda, la fecha de consulta y el enlace al producto correspondiente.
+
+El diseño contempla nueve entidades, de las cuales siete son entidades de negocio. Las entidades `USUARIO` y `ROL` se utilizan para autenticación y control de acceso.
+
+## 2. Diagrama entidad-relación
+
+El diagrama se representa mediante Mermaid y puede visualizarse directamente en GitHub.
+
+```mermaid
 erDiagram
-    ROL ||--o{ USUARIO : "asigna"
-    JUEGO ||--o{ EDICION : "contiene"
-    EDICION ||--o{ CARTA : "incluye"
-    USUARIO ||--o{ SEGUIMIENTO : "crea"
-    CARTA ||--o{ SEGUIMIENTO : "es seguida en"
-    USUARIO ||--o{ ALERTA : "configura"
-    CARTA ||--o{ ALERTA : "recibe"
-    CARTA ||--o{ PRECIO_HISTORICO : "registra"
-    FUENTE_PRECIO ||--o{ PRECIO_HISTORICO : "proporciona"
+    ROL ||--o{ USUARIO : asigna
+    JUEGO ||--o{ EDICION : contiene
+    EDICION ||--o{ CARTA : incluye
+    USUARIO ||--o{ SEGUIMIENTO : crea
+    CARTA ||--o{ SEGUIMIENTO : pertenece
+    USUARIO ||--o{ ALERTA : configura
+    CARTA ||--o{ ALERTA : recibe
+    CARTA ||--o{ PRECIO_HISTORICO : registra
+    FUENTE_PRECIO ||--o{ PRECIO_HISTORICO : identifica
 
     ROL {
         BIGINT id_rol PK
@@ -75,7 +81,7 @@ erDiagram
         NUMERIC(12,2) precio
         CHAR(3) moneda
         TIMESTAMPTZ fecha_registro
-        INTEGER unidades_disponibles
+        VARCHAR(500) url_referencia
     }
 
     SEGUIMIENTO {
@@ -98,128 +104,366 @@ erDiagram
     }
 ```
 
-## 2. Descripción de las entidades
+## 3. Descripción de las entidades
 
-  -----------------------------------------------------------------------
-  Entidad                             Finalidad
-  ----------------------------------- -----------------------------------
-  `ROL`                               Define los permisos generales de la
-                                      aplicación, por ejemplo,
-                                      administrador y usuario registrado.
+### 3.1. ROL
 
-  `USUARIO`                           Guarda los datos de acceso y el
-                                      estado de cada cuenta. La
-                                      contraseña se almacena como hash,
-                                      nunca en texto plano.
+Define los perfiles de acceso a la aplicación.
 
-  `JUEGO`                             Representa un juego de cartas
-                                      coleccionables, por ejemplo, Magic:
-                                      The Gathering. El diseño permite
-                                      añadir otros juegos en el futuro.
+Los roles principales son:
 
-  `EDICION`                           Representa una colección o edición
-                                      publicada para un juego.
+- **Administrador:** gestiona usuarios, catálogo y registros de precios.
+- **Usuario:** consulta cartas y gestiona sus seguimientos y alertas.
 
-  `CARTA`                             Representa una impresión concreta
-                                      de una carta dentro de una edición,
-                                      incluyendo número de coleccionista,
-                                      rareza y acabado.
+Cada usuario dispone de un rol que determina las operaciones autorizadas.
 
-  `FUENTE_PRECIO`                     Identifica la web o proveedor del
-                                      que se obtienen precios y
-                                      disponibilidad.
+### 3.2. USUARIO
 
-  `PRECIO_HISTORICO`                  Guarda cada observación de precio
-                                      y, cuando la fuente lo permita, las
-                                      unidades disponibles en ese
-                                      momento.
+Almacena la información de las cuentas registradas.
 
-  `SEGUIMIENTO`                       Tabla intermedia que relaciona
-                                      usuarios con cartas seguidas y
-                                      guarda preferencias propias de esa
-                                      relación.
+Incluye el nombre, correo electrónico, contraseña cifrada mediante hash, fecha de creación y estado de la cuenta.
 
-  `ALERTA`                            Guarda las condiciones de precio
-                                      configuradas por un usuario para
-                                      una carta.
-  -----------------------------------------------------------------------
+Las contraseñas no se almacenan en texto plano.
 
-## 3. Relaciones y cardinalidades
+### 3.3. JUEGO
 
--   **ROL 1:N USUARIO:** un rol puede asignarse a muchos usuarios; cada
-    usuario tiene un rol.
--   **JUEGO 1:N EDICION:** un juego puede tener muchas ediciones; cada
-    edición pertenece a un juego.
--   **EDICION 1:N CARTA:** una edición puede contener muchas cartas;
-    cada carta del modelo pertenece a una edición.
--   **USUARIO N:M CARTA mediante SEGUIMIENTO:** un usuario puede seguir
-    muchas cartas y una carta puede ser seguida por muchos usuarios.
-    `SEGUIMIENTO` resuelve la relación e incluye atributos propios:
-    fecha de alta y estado de las notificaciones.
--   **USUARIO 1:N ALERTA:** un usuario puede crear varias alertas; cada
-    alerta pertenece a un usuario.
--   **CARTA 1:N ALERTA:** una carta puede tener alertas de distintos
-    usuarios o varias condiciones; cada alerta apunta a una carta.
--   **CARTA 1:N PRECIO_HISTORICO:** una carta puede acumular muchas
-    observaciones de precio.
--   **FUENTE_PRECIO 1:N PRECIO_HISTORICO:** una fuente puede
-    proporcionar muchas observaciones históricas.
+Representa un juego de cartas coleccionables.
 
-## 4. Claves y restricciones recomendadas
+Por ejemplo:
 
-Además de las claves primarias y foráneas mostradas en el diagrama, al
-implementar la base de datos se recomienda definir:
+- Magic: The Gathering.
+- Pokémon TCG.
+- Yu-Gi-Oh!.
 
--   `USUARIO.email` como único y obligatorio.
--   `ROL.nombre`, `JUEGO.nombre` y `FUENTE_PRECIO.nombre` como únicos.
--   `EDICION (id_juego, codigo)` como combinación única, para evitar
-    duplicar el código de una edición dentro del mismo juego.
--   `SEGUIMIENTO (id_usuario, id_carta)` como combinación única, para
-    impedir que un usuario siga dos veces la misma carta.
--   `PRECIO_HISTORICO.precio >= 0` y `ALERTA.precio_objetivo >= 0`.
--   `PRECIO_HISTORICO.unidades_disponibles >= 0` cuando el dato no sea
-    nulo.
--   Campos obligatorios (`NOT NULL`) en las claves, nombres y datos
-    imprescindibles para cada entidad.
--   Índices en las claves foráneas y en
-    `PRECIO_HISTORICO (id_carta, fecha_registro)` para agilizar las
-    búsquedas de historial.
+Cada juego puede contener varias ediciones.
 
-Los valores de `tipo_condicion` deben limitarse a los tipos de alerta
-que implemente la aplicación. Para el MVP puede bastar una alerta cuando
-el precio sea menor o igual al precio objetivo.
+La inclusión de varios juegos en el catálogo no implica utilizar varias fuentes de precios. Cardmarket sigue siendo la única fuente de referencia.
 
-## 5. Justificación de la tercera forma normal (3FN)
+### 3.4. EDICION
 
-El modelo está planteado para aproximarse a la **tercera forma normal
-(3FN)** siguiendo estos criterios:
+Representa una colección o edición perteneciente a un juego.
 
-1.  **Primera forma normal (1FN):** cada atributo contiene un único
-    valor por fila; no se almacenan listas de cartas, fuentes o alertas
-    dentro de una misma columna.
-2.  **Segunda forma normal (2FN):** las entidades utilizan claves
-    primarias simples. En `SEGUIMIENTO`, la relación entre usuario y
-    carta se representa en una fila independiente y sus atributos
-    dependen de esa relación completa; además, se recomienda la
-    restricción única `(id_usuario, id_carta)`.
-3.  **Tercera forma normal (3FN):** los datos de rol, juego, edición y
-    fuente se almacenan en sus propias entidades. Por ejemplo, el nombre
-    de un juego no se repite en cada carta ni los datos de una fuente se
-    repiten en cada precio; las claves foráneas enlazan esas entidades.
+Almacena su código, nombre y fecha de lanzamiento.
 
-La validación definitiva de 3FN deberá comprobarse al desarrollar el
-esquema SQL real y sus dependencias funcionales.
+Cada edición pertenece a un único juego y puede contener numerosas cartas.
 
-## 6. Alcance y decisiones del modelo
+### 3.5. CARTA
 
--   El modelo contempla un catálogo de cartas, ediciones, fuentes de
-    precios, histórico, seguimiento personal y alertas.
--   Los datos de precio y disponibilidad dependen de lo que ofrezca cada
-    fuente y de sus condiciones de acceso.
--   `CARTA` representa una impresión concreta de una carta, no
-    necesariamente el concepto abstracto de la carta en todos sus
-    idiomas, ediciones y acabados. Si el proyecto necesita comparar
-    todas las impresiones de una misma carta, se podrá añadir más
-    adelante una entidad conceptual `CARTA_BASE`.
--   El modelo no incluye pagos, compras ni ventas, ya que quedan fuera
-    del MVP inicial.
+Representa una impresión concreta de una carta dentro de una edición.
+
+Almacena:
+
+- Nombre.
+- Número de coleccionista.
+- Rareza.
+- Acabado.
+
+Cada carta pertenece a una edición.
+
+### 3.6. FUENTE_PRECIO
+
+Identifica la procedencia de los registros históricos de precios.
+
+En el MVP únicamente existe una fuente:
+
+**Cardmarket**
+
+La entidad almacena su nombre, URL principal, estado y fecha de última consulta registrada.
+
+Se mantiene como entidad independiente para conservar la integridad referencial y documentar el origen de los precios.
+
+### 3.7. PRECIO_HISTORICO
+
+Almacena cada observación de precio registrada para una carta.
+
+Cada registro contiene:
+
+- Identificador del precio.
+- Identificador de la carta.
+- Identificador de la fuente.
+- Importe.
+- Moneda.
+- Fecha y hora de consulta.
+- Enlace de referencia al producto de Cardmarket.
+
+Los registros históricos se conservan para permitir consultar la evolución del precio.
+
+Los datos se introducen manualmente por un administrador.
+
+### 3.8. SEGUIMIENTO
+
+Representa la relación entre los usuarios y las cartas que desean seguir.
+
+Permite que un usuario siga varias cartas y que una misma carta sea seguida por diferentes usuarios.
+
+Además de las claves foráneas, almacena atributos propios:
+
+- Fecha de alta.
+- Estado de las notificaciones.
+
+### 3.9. ALERTA
+
+Almacena las condiciones de precio configuradas por los usuarios.
+
+Cada alerta contiene:
+
+- Usuario propietario.
+- Carta asociada.
+- Precio objetivo.
+- Tipo de condición.
+- Estado de activación.
+- Fecha de creación.
+- Fecha de última notificación.
+
+Para el MVP, la condición principal consiste en comprobar si el precio registrado es menor o igual al precio objetivo.
+
+## 4. Relaciones y cardinalidades
+
+### 4.1. ROL 1:N USUARIO
+
+Un rol puede asignarse a varios usuarios.
+
+Cada usuario pertenece a un único rol.
+
+### 4.2. JUEGO 1:N EDICION
+
+Un juego puede contener varias ediciones.
+
+Cada edición pertenece a un único juego.
+
+### 4.3. EDICION 1:N CARTA
+
+Una edición puede contener numerosas cartas.
+
+Cada carta pertenece a una edición concreta.
+
+### 4.4. USUARIO M:N CARTA
+
+Un usuario puede seguir varias cartas.
+
+Una carta puede ser seguida por varios usuarios.
+
+Esta relación muchos a muchos se resuelve mediante la entidad intermedia `SEGUIMIENTO`.
+
+La tabla contiene los atributos propios `fecha_alta` y `notificaciones_activas`, además de las claves foráneas.
+
+### 4.5. USUARIO 1:N ALERTA
+
+Un usuario puede configurar varias alertas.
+
+Cada alerta pertenece a un usuario.
+
+### 4.6. CARTA 1:N ALERTA
+
+Una carta puede tener varias alertas configuradas por diferentes usuarios.
+
+Cada alerta corresponde a una carta.
+
+### 4.7. CARTA 1:N PRECIO_HISTORICO
+
+Una carta puede disponer de numerosos registros históricos.
+
+Cada registro de precio corresponde a una única carta.
+
+### 4.8. FUENTE_PRECIO 1:N PRECIO_HISTORICO
+
+Una fuente puede estar asociada a numerosos registros históricos.
+
+Cada registro identifica una fuente.
+
+En el MVP, todos los registros históricos corresponden a Cardmarket.
+
+## 5. Claves y restricciones de integridad
+
+### 5.1. Claves primarias
+
+Todas las entidades utilizan un identificador principal de tipo `BIGINT`.
+
+Cada identificador se genera automáticamente y permite distinguir los registros de una tabla.
+
+### 5.2. Claves foráneas
+
+Las relaciones se implementan mediante claves foráneas:
+
+- `USUARIO.id_rol` referencia `ROL.id_rol`.
+- `EDICION.id_juego` referencia `JUEGO.id_juego`.
+- `CARTA.id_edicion` referencia `EDICION.id_edicion`.
+- `PRECIO_HISTORICO.id_carta` referencia `CARTA.id_carta`.
+- `PRECIO_HISTORICO.id_fuente` referencia `FUENTE_PRECIO.id_fuente`.
+- `SEGUIMIENTO.id_usuario` referencia `USUARIO.id_usuario`.
+- `SEGUIMIENTO.id_carta` referencia `CARTA.id_carta`.
+- `ALERTA.id_usuario` referencia `USUARIO.id_usuario`.
+- `ALERTA.id_carta` referencia `CARTA.id_carta`.
+
+### 5.3. Restricciones UNIQUE
+
+Se establecen las siguientes restricciones:
+
+- `USUARIO.email` debe ser único.
+- `ROL.nombre` debe ser único.
+- `JUEGO.nombre` debe ser único.
+- `FUENTE_PRECIO.nombre` debe ser único.
+- La combinación `(id_juego, codigo)` de `EDICION` debe ser única.
+- La combinación `(id_usuario, id_carta)` de `SEGUIMIENTO` debe ser única.
+
+Estas restricciones impiden duplicidades en los datos.
+
+### 5.4. Restricciones CHECK
+
+Se establecen las siguientes validaciones:
+
+- `PRECIO_HISTORICO.precio >= 0`.
+- `ALERTA.precio_objetivo > 0`.
+- `ALERTA.tipo_condicion` debe contener un valor permitido.
+
+Para el MVP, el valor permitido de `tipo_condicion` es `MENOR_IGUAL`.
+
+Las restricciones se implementan en PostgreSQL mediante las migraciones correspondientes.
+
+### 5.5. Restricciones NOT NULL
+
+Los identificadores, claves foráneas obligatorias, nombres principales, correo electrónico, hash de contraseña y datos necesarios para registrar precios no admiten valores nulos.
+
+Los campos opcionales se identifican en el diccionario de datos.
+
+### 5.6. Integridad referencial y eliminación
+
+Se aplican las siguientes reglas:
+
+- La eliminación de un usuario elimina sus registros personales de `SEGUIMIENTO` y `ALERTA` mediante `ON DELETE CASCADE`.
+- La eliminación de una carta con precios históricos, seguimientos o alertas asociados queda restringida mediante `ON DELETE RESTRICT`.
+- La eliminación de una edición que contiene cartas queda restringida.
+- La eliminación de un juego que contiene ediciones queda restringida.
+- La eliminación de una fuente con registros históricos asociados queda restringida.
+- La eliminación de un rol asignado a usuarios queda restringida.
+
+Estas decisiones protegen el histórico de precios y evitan eliminar accidentalmente información compartida.
+
+### 5.7. Índices
+
+Se crean índices en las claves foráneas utilizadas habitualmente en consultas.
+
+Además, se define un índice compuesto sobre:
+
+`PRECIO_HISTORICO (id_carta, fecha_registro)`
+
+Este índice facilita la consulta cronológica del histórico de precios de una carta.
+
+## 6. Justificación de la tercera forma normal (3FN)
+
+El modelo relacional se diseña siguiendo los principios de normalización hasta la tercera forma normal.
+
+### 6.1. Primera forma normal (1FN)
+
+Cada tabla dispone de una clave primaria y sus atributos contienen valores atómicos.
+
+No se almacenan listas de cartas, usuarios o precios dentro de una única columna.
+
+Por ejemplo, los diferentes precios de una carta se almacenan como registros independientes en `PRECIO_HISTORICO`.
+
+### 6.2. Segunda forma normal (2FN)
+
+Todos los atributos no clave dependen funcionalmente de la totalidad de la clave candidata correspondiente.
+
+Las entidades utilizan claves primarias simples.
+
+En `SEGUIMIENTO`, la combinación `(id_usuario, id_carta)` identifica de forma única la relación entre usuario y carta. Los atributos `fecha_alta` y `notificaciones_activas` describen esa relación completa.
+
+No existen dependencias parciales de atributos no clave respecto a una parte de dicha combinación.
+
+### 6.3. Tercera forma normal (3FN)
+
+Los atributos no clave dependen directamente de las claves que identifican sus registros, sin dependencias transitivas entre atributos no clave.
+
+Por ejemplo:
+
+- El nombre del juego se almacena en `JUEGO`, no se repite en cada carta.
+- Los datos de una edición se almacenan en `EDICION`.
+- La información de Cardmarket se almacena en `FUENTE_PRECIO`.
+- Los datos del usuario se almacenan en `USUARIO`.
+- Los precios se almacenan en `PRECIO_HISTORICO` y se relacionan con sus cartas mediante claves foráneas.
+
+Esta separación reduce la redundancia y evita anomalías de inserción, actualización y eliminación.
+
+## 7. Fuente única de precios: Cardmarket
+
+### 7.1. Selección de la fuente
+
+TCG Price Tracker utiliza Cardmarket como única fuente de referencia para los precios de las cartas.
+
+La entidad `FUENTE_PRECIO` conserva el origen de los registros históricos, pero en el MVP únicamente contiene el registro correspondiente a Cardmarket.
+
+### 7.2. Registro de precios
+
+Los precios se introducen manualmente mediante las funciones administrativas.
+
+Cada registro almacena:
+
+- Carta correspondiente.
+- Precio consultado.
+- Moneda.
+- Fecha y hora de consulta.
+- Enlace de referencia al producto.
+
+El sistema no realiza consultas automáticas a Cardmarket durante el MVP.
+
+### 7.3. Limitaciones
+
+Los precios representan observaciones realizadas en una fecha concreta y no garantizan el precio actual del mercado.
+
+La aplicación no presenta información de stock en tiempo real.
+
+La obtención automática de datos queda fuera del alcance inicial y depende de la disponibilidad de mecanismos de acceso autorizados.
+
+## 8. Decisiones de diseño
+
+### 8.1. Representación de las cartas
+
+La entidad `CARTA` representa una impresión concreta de una carta dentro de una edición.
+
+Esta decisión permite distinguir diferentes versiones de una carta por edición, número de coleccionista y acabado.
+
+### 8.2. Conservación del histórico
+
+Los registros de `PRECIO_HISTORICO` se mantienen como observaciones independientes.
+
+La incorporación de un nuevo precio no sobrescribe los registros anteriores.
+
+### 8.3. Seguimiento personal
+
+La tabla `SEGUIMIENTO` resuelve la relación M:N entre usuarios y cartas e incorpora atributos específicos de la relación.
+
+La restricción única impide que un usuario siga dos veces la misma carta.
+
+### 8.4. Seguridad
+
+Las contraseñas se almacenan mediante hash seguro.
+
+Las operaciones administrativas requieren un rol autorizado.
+
+Los usuarios solo pueden modificar sus propios seguimientos y alertas.
+
+### 8.5. Alcance del MVP
+
+El sistema incluye catálogo, usuarios, seguimiento, precios históricos y alertas.
+
+Quedan fuera del MVP:
+
+- Compras y ventas.
+- Pasarelas de pago.
+- Predicción de precios.
+- Integración automática con varias fuentes.
+- Consultas de disponibilidad en tiempo real.
+
+## 9. Implementación en el Hito 2
+
+El modelo se implementa mediante PostgreSQL y Prisma ORM.
+
+Las tablas, relaciones, restricciones e índices se definen mediante migraciones versionadas.
+
+Los seeders permiten cargar datos de demostración de forma reproducible.
+
+El archivo `docs/diccionario_datos.md` complementa este documento con la descripción detallada de cada campo, su tipo SQL, nulabilidad, valores predeterminados y restricciones.
+
+La implementación debe mantener la correspondencia entre el diagrama, el esquema de Prisma y la estructura real de PostgreSQL.
+
