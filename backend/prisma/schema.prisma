@@ -1,0 +1,132 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Rol {
+  id_rol      BigInt  @id @default(autoincrement())
+  nombre      String  @unique @db.VarChar(30)
+  descripcion String? @db.VarChar(150)
+
+  usuarios Usuario[]
+
+  @@map("rol")
+}
+
+model Usuario {
+  id_usuario     BigInt   @id @default(autoincrement())
+  id_rol         BigInt
+  nombre         String   @db.VarChar(80)
+  email          String   @unique @db.VarChar(160)
+  password_hash  String   @db.VarChar(255)
+  fecha_creacion DateTime @default(now()) @db.Timestamptz(6)
+  activo         Boolean  @default(true)
+
+  rol          Rol           @relation(fields: [id_rol], references: [id_rol], onDelete: Restrict)
+  seguimientos Seguimiento[]
+  alertas      Alerta[]
+
+  @@map("usuario")
+}
+
+model Juego {
+  id_juego    BigInt  @id @default(autoincrement())
+  nombre      String  @unique @db.VarChar(80)
+  descripcion String? @db.Text
+
+  ediciones Edicion[]
+
+  @@map("juego")
+}
+
+model Edicion {
+  id_edicion        BigInt    @id @default(autoincrement())
+  id_juego          BigInt
+  codigo            String    @db.VarChar(40)
+  nombre            String    @db.VarChar(120)
+  fecha_lanzamiento DateTime? @db.Date
+
+  juego  Juego   @relation(fields: [id_juego], references: [id_juego], onDelete: Restrict)
+  cartas Carta[]
+
+  @@unique([id_juego, codigo])
+  @@map("edicion")
+}
+
+model Carta {
+  id_carta             BigInt  @id @default(autoincrement())
+  id_edicion           BigInt
+  nombre               String  @db.VarChar(160)
+  numero_coleccionista String? @db.VarChar(40)
+  rareza               String? @db.VarChar(30)
+  acabado              String? @db.VarChar(20)
+
+  edicion      Edicion           @relation(fields: [id_edicion], references: [id_edicion], onDelete: Restrict)
+  precios      PrecioHistorico[]
+  seguimientos Seguimiento[]
+  alertas      Alerta[]
+
+  @@map("carta")
+}
+
+model FuentePrecio {
+  id_fuente       BigInt    @id @default(autoincrement())
+  nombre          String    @unique @db.VarChar(100)
+  url_base        String    @db.Text
+  activa          Boolean   @default(true)
+  ultima_consulta DateTime? @db.Timestamptz(6)
+
+  precios PrecioHistorico[]
+
+  @@map("fuente_precio")
+}
+
+model PrecioHistorico {
+  id_precio      BigInt   @id @default(autoincrement())
+  id_carta       BigInt
+  id_fuente      BigInt
+  precio         Decimal  @db.Decimal(12, 2)
+  moneda         String   @default("EUR") @db.Char(3)
+  fecha_registro DateTime @default(now()) @db.Timestamptz(6)
+  url_referencia String   @db.VarChar(500)
+
+  carta  Carta        @relation(fields: [id_carta], references: [id_carta], onDelete: Restrict)
+  fuente FuentePrecio @relation(fields: [id_fuente], references: [id_fuente], onDelete: Restrict)
+
+  @@index([id_carta, fecha_registro])
+  @@map("precio_historico")
+}
+
+model Seguimiento {
+  id_seguimiento         BigInt   @id @default(autoincrement())
+  id_usuario             BigInt
+  id_carta               BigInt
+  fecha_alta             DateTime @default(now()) @db.Timestamptz(6)
+  notificaciones_activas Boolean  @default(true)
+
+  usuario Usuario @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade)
+  carta   Carta   @relation(fields: [id_carta], references: [id_carta], onDelete: Restrict)
+
+  @@unique([id_usuario, id_carta])
+  @@map("seguimiento")
+}
+
+model Alerta {
+  id_alerta           BigInt    @id @default(autoincrement())
+  id_usuario          BigInt
+  id_carta            BigInt
+  precio_objetivo     Decimal   @db.Decimal(12, 2)
+  tipo_condicion      String    @default("MENOR_IGUAL") @db.VarChar(30)
+  activa              Boolean   @default(true)
+  fecha_creacion      DateTime  @default(now()) @db.Timestamptz(6)
+  ultima_notificacion DateTime? @db.Timestamptz(6)
+
+  usuario Usuario @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade)
+  carta   Carta   @relation(fields: [id_carta], references: [id_carta], onDelete: Restrict)
+
+  @@map("alerta")
+}
